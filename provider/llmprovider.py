@@ -8,20 +8,14 @@ from dify_plugin.errors.model import CredentialsValidateFailedError
 logger = logging.getLogger(__name__)
 
 
-class LlmproviderModelProvider(ModelProvider):
-    def validate_provider_credentials(self, credentials: Mapping) -> None:
-        """
-        Validate provider credentials
-        if validate failed, raise exception
+class LLMProviderModelProvider(ModelProvider):
 
-        :param credentials: provider credentials, credentials form defined in `provider_credential_schema`.
-        """
+    def validate_provider_credentials(self, credentials: dict) -> None:
         try:
-            pass
+            model_instance = self.get_model_instance(ModelType.LLM)
+            model_instance.validate_credentials(model="gpt-4o-mini", credentials=credentials)
         except CredentialsValidateFailedError as ex:
             raise ex
         except Exception as ex:
-            logger.exception(
-                f"{self.get_provider_schema().provider} credentials validate failed"
-            )
+            logger.exception(f"{self.get_provider_schema().provider} credentials validate failed")
             raise ex
