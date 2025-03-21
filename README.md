@@ -6,5 +6,12 @@
 
 ### Description
 
+LLMProvider's dify plugin.
+
+### Package Command
+```shell
+dify plugin package ./../llmprovider-plugin
+```
+
 
 
