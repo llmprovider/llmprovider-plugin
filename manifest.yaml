@@ -1,6 +1,6 @@
 version: 0.0.1
 type: plugin
-author: bytemin-io
+author: bytemind-io
 name: llmprovider
 label:
   en_US: llmprovider
