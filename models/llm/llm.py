@@ -21,6 +21,10 @@ class LLMProviderLargeLanguageModel(OAICompatLargeLanguageModel):
             user: Optional[str] = None,
     ) -> Union[LLMResult, Generator]:
         self._update_credential(self, model, credentials)
+        if stream:
+            model_parameters["stream_options"] = {
+            "include_usage": True,
+            }
         return super()._invoke(model, credentials, prompt_messages, model_parameters, tools, stop, stream, user)
 
     def validate_credentials(self, model: str, credentials: dict) -> None:
