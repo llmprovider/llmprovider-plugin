@@ -35,3 +35,14 @@ class LLMProviderLargeLanguageModel(OAICompatLargeLanguageModel):
     def _update_credential(self, model: str, credentials: dict):
         credentials["endpoint_url"] = str(URL(credentials.get("endpoint_url", "https://platform.llmprovider.ai/v1")))
         credentials["mode"] = self.get_model_mode(model).value
+        credentials["function_calling_type"] = "tool_call"
+
+    def get_num_tokens(
+        self,
+        model: str,
+        credentials: dict,
+        prompt_messages: list[PromptMessage],
+        tools: Optional[list[PromptMessageTool]] = None,
+    ) -> int:
+        self._update_credential(self, model, credentials)
+        return super().get_num_tokens(model, credentials, prompt_messages, tools)
