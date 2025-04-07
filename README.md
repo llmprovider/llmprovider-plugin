@@ -1,6 +1,6 @@
 ## llmprovider
 
-**Author:** bytemind-io
+**Author:** llmprovider
 **Version:** 0.0.1
 **Type:** model
 
