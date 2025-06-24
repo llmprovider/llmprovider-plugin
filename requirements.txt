@@ -1,2 +1,6 @@
 dify_plugin~=0.0.1b72
 openai~=1.66.3
+httpx~=0.27.2
+google-genai~=1.2.0
+anthropic~=0.48.0
+pillow~=11.0.0
