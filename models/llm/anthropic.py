@@ -186,6 +186,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                 **{k: v for k, v in extra_model_kwargs.items() if k != "tools"},
             )
         else:
+
             response = client.messages.create(
                 model=model,
                 messages=prompt_message_dicts,
@@ -551,7 +552,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                     if hasattr(chunk.message.usage, "cache_read_input_tokens"):
                         cache_read_input_tokens = chunk.message.usage.cache_read_input_tokens
             elif hasattr(chunk, "type") and chunk.type == "content_block_start":
-                if hasattr(chunk, "content_block"):
+                if hasattr(chunk, "content_block") and chunk.content_block:
                     content_block = chunk.content_block
 
                     if getattr(content_block, 'type', None) == "tool_use":
@@ -602,7 +603,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                         )
 
                     current_block_index = chunk.index
-                    if hasattr(chunk.delta, "thinking"):
+                    if hasattr(chunk.delta, "thinking") and chunk.delta.thinking:
                         current_block_type = "thinking"
                         assistant_prompt_message = AssistantPromptMessage(content="<think>\n")
                         yield LLMResultChunk(
@@ -612,7 +613,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                                 index=chunk.index, message=assistant_prompt_message
                             ),
                         )
-                    elif hasattr(chunk.delta, "text"):
+                    elif hasattr(chunk.delta, "text") and chunk.delta.text:
                         current_block_type = "text"
                     elif hasattr(chunk.delta, "type") and chunk.delta.type == "redacted_thinking":
                         current_block_type = "redacted_thinking"
@@ -625,7 +626,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                             ),
                         )
 
-                if hasattr(chunk.delta, "thinking"):
+                if hasattr(chunk.delta, "thinking") and chunk.delta.thinking:
                     thinking_text = chunk.delta.thinking or ""
                     full_assistant_content += thinking_text
 
@@ -641,10 +642,10 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                             index=chunk.index, message=assistant_prompt_message
                         ),
                     )
-                elif hasattr(chunk.delta, "signature"):
+                elif hasattr(chunk.delta, "signature") and chunk.delta.signature:
                     if current_thinking_blocks:
                         current_thinking_blocks[-1]["signature"] = chunk.delta.signature
-                elif hasattr(chunk.delta, "type") and chunk.delta.type == "redacted_thinking":
+                elif hasattr(chunk.delta, "type") and chunk.delta.type and chunk.delta.type == "redacted_thinking":
                     redacted_msg = "[Some of Claude's thinking was automatically encrypted for safety reasons]"
                     full_assistant_content += redacted_msg
                     assistant_prompt_message = AssistantPromptMessage(content=redacted_msg)
@@ -656,7 +657,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                             index=chunk.index, message=assistant_prompt_message
                         ),
                     )
-                elif hasattr(chunk.delta, "text"):
+                elif hasattr(chunk.delta, "text")and chunk.delta.text:
                     chunk_text = chunk.delta.text or ""
                     full_assistant_content += chunk_text
                     assistant_prompt_message = AssistantPromptMessage(content=chunk_text)
@@ -748,13 +749,14 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
         """
         credentials_kwargs = {
             "api_key": credentials["api_key"],
-            "base_url": "https://aihubmix.com",
-            "timeout": Timeout(315.0, read=300.0, write=10.0, connect=5.0),
+            "base_url": "https://platform.llmprovider.ai",
+            "timeout": Timeout(615.0, read=600.0, write=10.0, connect=5.0),
             "max_retries": 1,
         }
-        api_url = credentials.get("api_url")
+        api_url = credentials.get("endpoint_url")
         if api_url:
-            credentials_kwargs["base_url"] = api_url.rstrip("/")
+            credentials_kwargs["base_url"] = api_url.removesuffix("/v1").rstrip("/")
+
         return credentials_kwargs
 
     def _convert_prompt_messages(
