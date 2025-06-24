@@ -581,7 +581,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                         })
             elif isinstance(chunk, ContentBlockDeltaEvent):
                 if hasattr(chunk.delta, "type") and chunk.delta.type == "input_json_delta":
-                    if hasattr(chunk.delta, "partial_json"):
+                    if hasattr(chunk.delta, "partial_json") and chunk.delta.partial_json:
                         partial_json = chunk.delta.partial_json
                         if partial_json:
                             current_tool_params += partial_json
@@ -645,7 +645,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                 elif hasattr(chunk.delta, "signature") and chunk.delta.signature:
                     if current_thinking_blocks:
                         current_thinking_blocks[-1]["signature"] = chunk.delta.signature
-                elif hasattr(chunk.delta, "type") and chunk.delta.type and chunk.delta.type == "redacted_thinking":
+                elif hasattr(chunk.delta, "type") and chunk.delta.type == "redacted_thinking":
                     redacted_msg = "[Some of Claude's thinking was automatically encrypted for safety reasons]"
                     full_assistant_content += redacted_msg
                     assistant_prompt_message = AssistantPromptMessage(content=redacted_msg)
@@ -657,7 +657,7 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
                             index=chunk.index, message=assistant_prompt_message
                         ),
                     )
-                elif hasattr(chunk.delta, "text")and chunk.delta.text:
+                elif hasattr(chunk.delta, "text") and chunk.delta.text:
                     chunk_text = chunk.delta.text or ""
                     full_assistant_content += chunk_text
                     assistant_prompt_message = AssistantPromptMessage(content=chunk_text)
