@@ -13,12 +13,14 @@ from dify_plugin.errors.model import (
     InvokeError,
 )
 from .anthropic import AnthropicLargeLanguageModel
+from .google import GoogleLargeLanguageModel
 
 logger = logging.getLogger(__name__)
 
 # 创建不同厂商的模型实例
 model_schemas = []
 anthropic_llm = AnthropicLargeLanguageModel(model_schemas)
+google_llm = GoogleLargeLanguageModel(model_schemas)
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,9 @@ class LLMProviderLargeLanguageModel(OAICompatLargeLanguageModel):
         # 检查模型名称是否以 "claude" 开头
         if model.startswith("claude"):
             return anthropic_llm._invoke(model, credentials, prompt_messages, model_parameters, tools, stop, stream, user)
+                # 检查模型名称是否以 "gemini" 开头且不以 "-nothink" 或 "-search" 结尾
+        if model.startswith("gemini") and not (model.endswith("-nothink") or model.endswith("-search")):
+            return google_llm._invoke(model, credentials, prompt_messages, model_parameters, tools, stop, stream, user)
 
         # 默认使用父类的生成方法
         return super()._generate(model, credentials, prompt_messages, model_parameters, tools, stop, stream, user)
