@@ -172,6 +172,25 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
             self.previous_thinking_blocks = []
             self.previous_redacted_thinking_blocks = []
 
+        # 执行清理
+        # original_count = len(prompt_message_dicts)
+        prompt_message_dicts = self.clean_prompt_messages(prompt_message_dicts)
+        
+        # # 完整打印 prompt_message_dicts
+        # try:
+        #     print("=" * 80)
+        #     print(f"PROMPT MESSAGE DICTS (清理前: {original_count}, 清理后: {len(prompt_message_dicts)}):")
+        #     print("=" * 80)
+        #     print(json.dumps(prompt_message_dicts, indent=4, ensure_ascii=False))
+        #     print("=" * 80)
+        # except Exception as e:
+        #     print(f"打印 prompt_message_dicts 时出错: {e}")
+        #     # 如果 json.dumps 失败，尝试逐个打印
+        #     print("逐个打印消息:")
+        #     for i, msg in enumerate(prompt_message_dicts):
+        #         print(f"消息 {i}: {msg}")
+        #     print("=" * 80)
+
         if tools:
             extra_model_kwargs["tools"] = [
                 self._transform_tool_prompt(tool) for tool in tools
@@ -204,6 +223,45 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
             model, credentials, response, prompt_messages
         )
 
+    # 校验并清理 prompt_message_dicts
+    def clean_prompt_messages(self, messages):
+        """
+        清理无效的消息对象，删除以下情况：
+        1. 没有 content 字段
+        2. content 是空数组
+        3. content 是空字符串
+        """
+        cleaned_messages = []
+        removed_count = 0
+
+        for i, msg in enumerate(messages):
+            # 检查是否有 content 字段
+            if 'content' not in msg:
+                print(f"删除消息 {i}: 缺少 content 字段")
+                removed_count += 1
+                continue
+
+            content = msg['content']
+
+            # 检查 content 是否为空字符串
+            if isinstance(content, str) and content.strip() == "":
+                print(f"删除消息 {i}: content 是空字符串")
+                removed_count += 1
+                continue
+
+            # 检查 content 是否为空数组
+            if isinstance(content, list) and len(content) == 0:
+                print(f"删除消息 {i}: content 是空数组")
+                removed_count += 1
+                continue
+
+            # 如果通过所有检查，保留这个消息
+            cleaned_messages.append(msg)
+
+        if removed_count > 0:
+            print(f"总共删除了 {removed_count} 个无效消息")
+
+        return cleaned_messages
     def _code_block_mode_wrapper(
             self,
             model: str,
@@ -503,8 +561,6 @@ class AnthropicLargeLanguageModel(LargeLanguageModel):
             usage=usage,
         )
         return result
-
-
 
     def _handle_chat_generate_stream_response(
             self,
