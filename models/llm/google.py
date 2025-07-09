@@ -1,9 +1,7 @@
 import base64
 import logging
-import tempfile
 import json
-import time
-import os
+import uuid
 from collections.abc import Generator, Iterator, Sequence
 from typing import Optional, Union, Mapping, Any
 
@@ -43,10 +41,7 @@ from dify_plugin.errors.model import (
 )
 from dify_plugin.interfaces.model.large_language_model import LargeLanguageModel
 from httpx import Timeout
-from .utils import FileCache
 
-
-file_cache = FileCache()
 
 
 class GoogleLargeLanguageModel(LargeLanguageModel):
@@ -266,14 +261,14 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         file_server_url_prefix = credentials.get("file_url") or None
         for msg in prompt_messages:  # makes message roles strictly alternating
             content = self._format_message_to_glm_content(
-                msg, 
-                genai_client=genai_client, 
+                msg,
                 file_server_url_prefix=file_server_url_prefix)
             if history and history[-1].role == content.role:
                 history[-1].parts.extend(content.parts)
             else:
                 history.append(content)
         # contents = self._convert_to_contents(prompt_messages=prompt_messages)
+
         if stream:
             response = genai_client.models.generate_content_stream(
                 model=model,
@@ -342,7 +337,7 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         return system_instruction
 
     def _format_message_to_glm_content(
-            self, message: PromptMessage, genai_client: genai.Client, 
+            self, message: PromptMessage, 
             file_server_url_prefix: str|None=None,
         ) -> types.Content:
         """
@@ -360,10 +355,11 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
                     if c.type == PromptMessageContentType.TEXT:
                         glm_content.parts.append(types.Part.from_text(text=c.data))
                     else:
-                        uri, mime_type = self._upload_file_content_to_google(
-                            message_content=c, genai_client=genai_client, file_server_url_prefix=file_server_url_prefix
-                            )
-                        glm_content.parts.append(types.Part.from_uri(file_uri=uri, mime_type=mime_type))
+                        # 使用base64数据而不是上传文件
+                        part = self._create_part_from_content(
+                            message_content=c, file_server_url_prefix=file_server_url_prefix
+                        )
+                        glm_content.parts.append(part)
 
             return glm_content
         elif isinstance(message, AssistantPromptMessage):
@@ -388,50 +384,46 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         else:
             raise ValueError(f"Got unknown type {message}")
 
-    def _upload_file_content_to_google(
+    def _create_part_from_content(
         self, message_content: MultiModalPromptMessageContent,
-        genai_client: genai.Client,
         file_server_url_prefix: str | None = None,
-    ) -> types.File:
-
-        key = f"{message_content.type.value}:{hash(message_content.data)}"
-        if file_cache.exists(key):
-            value = file_cache.get(key).split(";")
-            return value[0], value[1]
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            if message_content.base64_data:
-                file_content = base64.b64decode(message_content.base64_data)
-                temp_file.write(file_content)
-            else:
-                try:
-                    file_url = message_content.url
-                    if file_server_url_prefix:
-                        file_url = f"{file_server_url_prefix.rstrip('/')}/files{message_content.url.split("/files")[-1]}"
-                    if not file_url.startswith("https://") and not file_url.startswith("http://"):
-                        raise ValueError(f"Set FILES_URL env first!")
-                    response: requests.Response = requests.get(file_url)
-                    response.raise_for_status()
-                    temp_file.write(response.content)
-                except Exception as ex:
-                    raise ValueError(
-                        f"Failed to fetch data from url {file_url} {ex}"
-                    )
-            temp_file.flush()
-        file = genai_client.files.upload(
-            file=temp_file.name, config={"mime_type": message_content.mime_type}
-        )
-        while file.state.name == "PROCESSING":
-            time.sleep(5)
-            file = genai_client.files.get(name=file.name)
-        # google will delete your upload files in 2 days.
-        file_cache.setex(key, 47 * 60 * 60, f"{file.uri};{file.mime_type}")
-
-        try:
-            os.unlink(temp_file.name)
-        except PermissionError:
-            # windows may raise permission error
-            pass
-        return file.uri, file.mime_type
+    ) -> types.Part:
+        """
+        从多模态内容创建Part，使用base64数据而不是上传文件
+        
+        :param message_content: 多模态消息内容
+        :param file_server_url_prefix: 文件服务器URL前缀（当需要从URL获取内容时）
+        :return: Gemini API的Part对象
+        """
+        # 如果有base64数据，直接使用
+        if message_content.base64_data:
+            file_data = base64.b64decode(message_content.base64_data)
+            return types.Part.from_bytes(
+                data=file_data,
+                mime_type=message_content.mime_type
+            )
+        
+        # 如果有URL，从URL下载数据并转换为base64
+        if message_content.url:
+            try:
+                file_url = message_content.url
+                if file_server_url_prefix:
+                    file_url = f"{file_server_url_prefix.rstrip('/')}/files{message_content.url.split('/files')[-1]}"
+                
+                if not file_url.startswith(("https://", "http://")):
+                    raise ValueError("需要设置 FILES_URL 环境变量！")
+                
+                response = requests.get(file_url)
+                response.raise_for_status()
+                
+                return types.Part.from_bytes(
+                    data=response.content,
+                    mime_type=message_content.mime_type
+                )
+            except Exception as ex:
+                raise ValueError(f"从URL获取数据失败 {file_url}: {ex}")
+        
+        raise ValueError("消息内容必须包含base64_data或url")
 
     def _handle_generate_response(
             self,
@@ -500,11 +492,13 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         for chunk in response:
             if not chunk.candidates:
                 continue
-            for candidate in chunk.candidates:
+            for candidate_idx, candidate in enumerate(chunk.candidates):
                 if not candidate.content or not candidate.content.parts:
                     continue
-
-                message = self._parse_parts(candidate.content.parts)
+                try:
+                    message = self._parse_parts(candidate.content.parts)
+                except Exception as e:
+                    raise e
                 index += len(candidate.content.parts)
                 if chunk.usage_metadata:
                     prompt_tokens += chunk.usage_metadata.prompt_token_count or 0
@@ -586,7 +580,7 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
     def _parse_parts(self, parts: Sequence[types.Part], /) -> AssistantPromptMessage:
         contents: list[PromptMessageContent] = []
         function_calls = []
-        for part in parts:
+        for i, part in enumerate(parts):
             if part.text:
                 contents.append(TextPromptMessageContent(data=part.text))
             if part.function_call:
@@ -594,12 +588,24 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
                 function_call_id = function_call.id
                 function_call_name = function_call.name
                 function_call_args = function_call.args
+                # 尝试转换 function_call_id 为字符串
                 if not isinstance(function_call_id, str):
-                    raise InvokeError("function_call_id received is not a string")
+                    if function_call_id is None:
+                        print(f"function_call_id 是 None，生成随机ID")
+                        function_call_id = str(uuid.uuid4())
+                    else:
+                        function_call_id = str(function_call_id)
+
                 if not isinstance(function_call_name, str):
-                    raise InvokeError("function_call_name received is not a string")
+                    print(f"    错误: function_call_name 不是字符串: {type(function_call_name)}")
+                    raise InvokeError(f"function_call_name received is not a string, got {type(function_call_name)}: {repr(function_call_name)}")
+
                 if not isinstance(function_call_args, dict):
-                    raise InvokeError("function_call_args received is not a dict")
+                    print(f"    错误: function_call_args 不是字典: {type(function_call_args)}")
+                    raise InvokeError(f"function_call_args received is not a dict, got {type(function_call_args)}: {repr(function_call_args)}")
+
+                print(f"    最终使用的id: {repr(function_call_id)}")
+
                 function_call = AssistantPromptMessage.ToolCall(
                     id=function_call_id,
                     type="function",
