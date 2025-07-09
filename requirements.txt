@@ -1,6 +1,6 @@
-dify_plugin~=0.0.1b72
+dify_plugin>=0.3.0,<0.4.0
 openai~=1.66.3
-httpx~=0.27.2
-google-genai~=1.24.0
+httpx>=0.28.1,<0.29.dev0
+google-genai~=1.2.0
 anthropic~=0.48.0
 pillow~=11.0.0
